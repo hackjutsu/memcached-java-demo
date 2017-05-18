@@ -1,12 +1,13 @@
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.log4j.Log4j;
-import net.spy.memcached.MemcachedClient;
+import net.spy.memcached.*;
 import org.apache.log4j.Logger;
 
 import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 
 @Log4j
 public class MemcachedJava {
@@ -20,8 +21,9 @@ public class MemcachedJava {
 //            memcached_set_primitive();
 //            memcached_add();
 //            memcached_test();
-//            memcached_set_object();
-            memcached_get_object();
+            memcached_set_object();
+//            memcached_get_object();
+//            memcached_pool();
 
         }catch(Exception ex){
             log.debug( ex.getMessage() );
@@ -140,5 +142,33 @@ public class MemcachedJava {
 
         // Shutdowns the memcached client
         mcc.shutdown();
+    }
+
+    private static void memcached_pool() throws IOException {
+        // http://stackoverflow.com/a/10711496/3697757
+        // http://dustin.sallings.org/java-memcached-client/apidocs/net/spy/memcached/MemcachedClient.html
+        MemcachedClient mcc = new MemcachedClient(
+                new ConnectionFactoryBuilder().setDaemon(true).setFailureMode(FailureMode.Cancel).build(),
+                AddrUtil.getAddresses("127.0.0.1:11211 127.0.0.1:11212"));
+
+        // Try to get a value, for up to 5 seconds, and cancel if it
+        // doesn't return
+        String key = "someKey1";
+        String value = null;
+
+        mcc.set(key, 900, "some_value");
+
+        Future<Object> f = mcc.asyncGet(key);
+        try {
+            log.debug("Trying to get the value of " + key);
+            value = (String)f.get(5, TimeUnit.SECONDS);
+            log.debug(String.format("The value of %s is %s", key, value));
+        } catch (Exception e) {
+          // Since we don't need this, go ahead and cancel the operation.
+          // This is not strictly necessary, but it'll save some work on
+          // the server.  It is okay to cancel it if running.
+          log.warn(String.format("Failed to get %s from memcached. Canceled.", key));
+          f.cancel(true);
+      }
     }
 }
